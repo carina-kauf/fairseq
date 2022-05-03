@@ -1,0 +1,17 @@
+{
+    "manifests": {
+      "train": "/Users/carinakauf/repos/fairseq/train.txt",
+      "valid": "/Users/carinakauf/repos/fairseq/valid.txt",
+      "test": "/Users/carinakauf/repos/fairseq/test.txt"
+    },
+    "n_units": 100,
+    "code_hop_size": 320,
+    "sampling_rate": 16000,
+    "multispkr": "parent_parent_name",
+
+    "f0_vq_type": "naive",
+    "f0_vq_naive_quantizer": {
+      "log_mean_norm": "/Users/carinakauf/repos/fairseq/preprocessing_outputs/mean_norm_log_f0_bin.th"
+    },
+    "f0_vq_n_units": 32
+}
