@@ -6,6 +6,7 @@
 import json
 import argparse
 import pathlib
+import os
 
 
 def main():
@@ -42,6 +43,8 @@ def main():
                 ),
                 file=outp,
             )
+    print(os.getcwd())
+    print(f'Wrote output to file {args.output}')
 
 
 if __name__ == "__main__":

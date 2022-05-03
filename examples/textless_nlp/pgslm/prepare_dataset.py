@@ -82,22 +82,24 @@ def dump_seg_data(data, out_prefix):
         "f0": f"{out_prefix}.f0.npy",
     }
     for key, targ in key_targs.items():
-        assert not os.path.exists(targ)
+        print('***********')
+        print(targ)
+        #assert not os.path.exists(targ) #TODO taken out CK
         npaa = NpyAppendArray(targ)
         for utt_data in tqdm(data[key], desc=f"dumping {key}"):
             npaa.append(utt_data.numpy())
 
-    assert not os.path.exists(f"{out_prefix}.path.txt")
+    #assert not os.path.exists(f"{out_prefix}.path.txt") #TODO taken out CK
     with open(f"{out_prefix}.path.txt", "w") as f:
         for x in data["path"]:
             f.write(f"{str(x)}\n")
 
-    assert not os.path.exists(f"{out_prefix}.leng.txt")
+    #assert not os.path.exists(f"{out_prefix}.leng.txt") #TODO taken out CK
     with open(f"{out_prefix}.leng.txt", "w") as f:
         for x in data["codes"]:
             f.write(f"{len(x)}\n")
 
-    assert not os.path.exists(f"{out_prefix}.speaker.txt")
+    #assert not os.path.exists(f"{out_prefix}.speaker.txt") #TODO taken out CK
     with open(f"{out_prefix}.speaker.txt", "w") as f:
         for x in data["speaker"]:
             f.write(f"{str(x)}\n")

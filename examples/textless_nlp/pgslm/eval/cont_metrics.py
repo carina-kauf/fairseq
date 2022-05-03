@@ -45,9 +45,14 @@ def teacher_force_everything(
     if args.dequantize_prosody:
         assert dataset.discrete_f0
         print("Reporting MAE for a discrete model")
-        f0_decoder = Naive_F0_Decoder(
-            args.f0_discretization_bounds, dataset.config.f0_vq_n_units
-        ).cuda()
+        if torch.cuda.is_available():
+            f0_decoder = Naive_F0_Decoder(
+                args.f0_discretization_bounds, dataset.config.f0_vq_n_units
+            ).cuda()
+        else:
+            f0_decoder = Naive_F0_Decoder(
+                args.f0_discretization_bounds, dataset.config.f0_vq_n_units
+            )
 
     dataset = InferenceDataset(
         dataset,
@@ -81,7 +86,8 @@ def teacher_force_everything(
     i = 0
     for batch in dataloader:
         i += 1
-        batch = move_to_cuda(batch)
+        if torch.cuda.is_available():
+            batch = move_to_cuda(batch)
         output = model(**batch["net_input"])
 
         tokens, durations, f0 = output["token"], output["duration"], output["f0"]
@@ -182,9 +188,14 @@ def continuation(args, dataset, model, criterion, tgt_dict, rank, world_size):
     if args.dequantize_prosody:
         assert dataset.discrete_f0
         print("Reporting MAE F0 for a discrete model")
-        f0_decoder = Naive_F0_Decoder(
-            args.f0_discretization_bounds, dataset.config.f0_vq_n_units
-        ).cuda()
+        if torch.cuda.is_available():
+            f0_decoder = Naive_F0_Decoder(
+                args.f0_discretization_bounds, dataset.config.f0_vq_n_units
+            ).cuda()
+        else:
+            f0_decoder = Naive_F0_Decoder(
+                args.f0_discretization_bounds, dataset.config.f0_vq_n_units
+            )
 
     dataset = InferenceDataset(
         dataset, args.prefix_length, filter_short=True, presort_by_length=True
@@ -227,7 +238,8 @@ def continuation(args, dataset, model, criterion, tgt_dict, rank, world_size):
         batch = explode_batch(batch, args.batch_explosion_rate)
         bsz = batch["target"].size(0)
 
-        batch = move_to_cuda(batch)
+        if torch.cuda.is_available():
+            batch = move_to_cuda(batch)
         prefix = batch["prefix"][0]
 
         max_length_to_unroll = batch["target"].size(1)
@@ -370,9 +382,14 @@ def correlation(args, dataset, model, criterion, tgt_dict, rank, world_size):
     f0_decoder = None
     if is_discrete_f0:
         assert dataset.discrete_f0
-        f0_decoder = Naive_F0_Decoder(
-            args.f0_discretization_bounds, dataset.config.f0_vq_n_units
-        ).cuda()
+        if torch.cuda.is_available():
+            f0_decoder = Naive_F0_Decoder(
+                args.f0_discretization_bounds, dataset.config.f0_vq_n_units
+            ).cuda()
+        else:
+            f0_decoder = Naive_F0_Decoder(
+                args.f0_discretization_bounds, dataset.config.f0_vq_n_units
+            )
 
     if is_discrete_f0:
         assert f0_decoder  # correlation on tokens is meaningless
@@ -409,7 +426,8 @@ def correlation(args, dataset, model, criterion, tgt_dict, rank, world_size):
 
     for batch in dataloader:
         batch = explode_batch(batch, args.batch_explosion_rate)
-        batch = move_to_cuda(batch)
+        if torch.cuda.is_available():
+            batch = move_to_cuda(batch)
 
         assert len(batch["prefix"]) == 1
 
@@ -509,7 +527,10 @@ def main(rank, world_size, args):
 
     for model in models:
         model.prepare_for_inference_(args)
-        model.cuda().eval()
+        if torch.cuda.is_available():
+            model.cuda().eval()
+        else:
+            model.eval()
         if raw_args.fp16:
             model = model.half()
     model = models[0]
@@ -705,7 +726,10 @@ def cli_main():
     if args.dequantize_prosody:
         assert args.f0_discretization_bounds
 
-    world_size = args.n_workers or torch.cuda.device_count()
+    if torch.cuda.is_available():
+        world_size = args.n_workers or torch.cuda.device_count()
+    else:
+        world_size = args.n_workers
     if world_size > 1:
         import random
 

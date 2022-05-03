@@ -35,7 +35,11 @@ class Stat:
 
     @property
     def mean(self):
-        return self.x / self.n
+        try:
+            return self.x / self.n
+        except:
+            raise ValueError(f'Caution, cannot divide {self.x} by {self.n}')
+            return 0
 
     @property
     def std(self):
@@ -90,6 +94,7 @@ def dump_speaker_f0_stat(speaker_to_f0_stat, out_prefix):
 
 def load_audio_path(path):
     audio_paths = []
+    print(path)
     with open(path) as f:
         for line in f.readlines():
             sample = eval(line.strip())

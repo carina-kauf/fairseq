@@ -87,7 +87,8 @@ def get_features(
     del iterator
     del generator
     gc.collect()
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     if flatten:
         return np.concatenate(features_list)

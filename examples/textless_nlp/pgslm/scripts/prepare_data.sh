@@ -18,10 +18,13 @@ out_dir=$8
 meta_path="$out_dir/data_config.json"
 f0_dir="$out_dir/f0"
 
+echo '*****************'
 mkdir -p $out_dir
-ln -sf $train_json $out_dir/train.txt
-ln -sf $valid_json $out_dir/valid.txt
-ln -sf $test_json $out_dir/test.txt
+echo $train_json
+echo $out_dir/train.txt
+#ln -sf $train_json $out_dir/train.txt
+#ln -sf $valid_json $out_dir/valid.txt
+#ln -sf $test_json $out_dir/test.txt
 
 cat <<EOF >$meta_path
 {
