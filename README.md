@@ -14,7 +14,7 @@
 
 > where "foo" = `/Users/carinakauf/repos/fairseq/input_audiofiles`)
 
-7. Run
+7. Run `eval.sh`
 ``` bash
 SET=test
 CHECKPOINT_PATH=discrete_prosody_shift_1_1.pt
@@ -30,7 +30,7 @@ python examples/textless_nlp/pgslm/eval/cont_metrics.py $DATA \
   --f0-discretization-bounds=mean_norm_log_f0_seg_bin.th --dequantize-prosody
  ```
   
-> NOTE: Run without `fp16` flag when running without cuda (https://github.com/pytorch/fairseq/blob/main/examples/textless_nlp/pgslm/eval/cont_metrics.py#L513)
+> NOTE: Run without `fp16` flag when running without cuda (see `eval.sh`) (https://github.com/pytorch/fairseq/blob/main/examples/textless_nlp/pgslm/eval/cont_metrics.py#L513)
 
 <br />
 <br />
