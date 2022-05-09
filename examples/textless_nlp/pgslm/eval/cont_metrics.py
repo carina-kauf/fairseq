@@ -23,10 +23,14 @@ from types import SimpleNamespace
 import sys, pathlib
 
 sys.path.append(str(pathlib.Path(__file__).parent.parent.resolve()))
+root_path = str(pathlib.Path(__file__).parent.parent.parent.parent.parent.resolve())
 
 from naive_decoder import Naive_F0_Decoder
 from inference_dataset import InferenceDataset, explode_batch
 from sample.sample import do_sampling, TemperatureDecoder, FilterNamesDataset
+
+import pickle
+from tqdm import tqdm
 
 try:
     from nltk.translate.bleu_score import sentence_bleu
@@ -39,6 +43,15 @@ except ImportError:
 def teacher_force_everything(
     args, dataset, model, criterion, tgt_dict, rank, world_size
 ):
+    """
+    Now returns:
+    Dict(sentence_id.wav --> Dict(token_loss --> [seq_len]
+                              duration_loss --> [seq_len]
+                              f0_loss --> [seq_len]))
+    """
+    output_loss_dictionary = {}
+    args.batch_size = 1  #added for processing sentences individually, could be specified in running script too
+
     prefix = args.prefix_length
 
     f0_decoder = None
@@ -68,6 +81,7 @@ def teacher_force_everything(
             dataset, num_replicas=world_size, rank=rank, shuffle=False
         )
     )
+
     dataloader = DataLoader(
         dataset,
         args.batch_size,
@@ -84,21 +98,30 @@ def teacher_force_everything(
     )
 
     i = 0
-    for batch in dataloader:
+    for batch in tqdm(dataloader):
+        filename = batch['filename'][0]
+        filename = filename.split('/')[-1]
+        output_loss_dictionary[filename] = {}
         i += 1
         if torch.cuda.is_available():
             batch = move_to_cuda(batch)
+        # print(batch["net_input"].keys()) #for debugging
+        # for key in batch["net_input"].keys():
+        #     print(key, batch["net_input"][key].shape)
+        #     print(key, batch["net_input"][key])
+        #     print('**')
         output = model(**batch["net_input"])
-
         tokens, durations, f0 = output["token"], output["duration"], output["f0"]
-        durations, f0 = durations.squeeze(), f0.squeeze()
+        if args.batch_size != 1:
+            durations, f0 = durations.squeeze(), f0.squeeze()
 
         token_loss = nll_loss(
             tokens[:, prefix - 1 :],
             batch["target"][:, prefix - 1 :].contiguous(),
             batch["mask"][:, prefix - 1 :].contiguous(),
-            reduce=True,
+            reduce=False, #reduce=True for batch summary values
         )
+        output_loss_dictionary[filename]['token_loss'] = token_loss
 
         if args.dequantize_prosody:
             durations = durations.argmax(dim=-1)
@@ -106,8 +129,9 @@ def teacher_force_everything(
                 durations[:, prefix - 1 :].contiguous().float(),
                 batch["dur_target"][:, prefix - 1 :].contiguous().float(),
                 batch["dur_mask"][:, prefix - 1 :].contiguous(),
-                reduce=True,
+                reduce=False, #reduce=True for batch summary values
             )
+            output_loss_dictionary[filename]['duration_loss'] = duration_loss
         else:
             duration_loss = criterion.dur_loss_fn(
                 durations[:, prefix - 1 :].contiguous(),
@@ -125,8 +149,9 @@ def teacher_force_everything(
                 f0[:, prefix - 1 :].contiguous(),
                 f0_target[:, prefix - 1 :].contiguous(),
                 batch["f0_mask"][:, prefix - 1 :].contiguous(),
-                reduce=True,
+                reduce=False, #reduce=True for batch summary values
             )
+            output_loss_dictionary[filename]['f0_loss'] = f0_loss
         else:
             f0_loss = criterion.f0_loss_fn(
                 f0[:, prefix - 1 :].contiguous(),
@@ -135,20 +160,26 @@ def teacher_force_everything(
                 reduce=True,
             )
 
-        n_tokens = (~batch["dur_mask"])[:, prefix - 1 :].sum()
-
+    if args.batch_size > 1: # we don't need it here, but kept this anyways
+        n_tokens = (~batch["dur_mask"])[:, prefix - 1:].sum()
         total_token_loss += token_loss.item()
         total_duration_loss += duration_loss.item()
         total_f0_loss += f0_loss.item()
-
         total_tokens += n_tokens.item()
-        if args.debug and i > 5:
-            break
 
-    values = torch.tensor([total_token_loss, total_duration_loss, total_f0_loss])
-    normalizers = torch.tensor([total_tokens for _ in range(3)])
+        values = torch.tensor([total_token_loss, total_duration_loss, total_f0_loss])
+        normalizers = torch.tensor([total_tokens for _ in range(3)])
 
-    return values, normalizers
+        print(f'Values: {values}')
+        print(f'Normalizers: {normalizers}')
+
+        return values, normalizers
+
+    else:
+        with open(os.path.join(root_path, 'output_loss_dictionary.pkl'), 'wb') as fout:
+            pickle.dump(output_loss_dictionary, fout)
+
+        return output_loss_dictionary
 
 
 def get_bleu(produced_tokens, target_tokens, tgt_dict):
@@ -531,7 +562,7 @@ def main(rank, world_size, args):
             model.cuda().eval()
         else:
             model.eval()
-        if raw_args.fp16:
+        if raw_args.fp16: #TODO CK: This prevents code from running locally
             model = model.half()
     model = models[0]
 
@@ -588,33 +619,33 @@ def main(rank, world_size, args):
 
     values = None
 
-    if metric_name not in [
-        "correlation",
-    ]:
-        values, normalizers = results
-        values = maybe_aggregate_normalize(values, normalizers, world_size)
-    elif metric_name == "correlation":
-        values = maybe_aggregate_correlations(results, world_size)
-    else:
-        assert False
-
-    assert values is not None
-    summary = dict(zip(name2keys[raw_args.metric], values.tolist()))
-    if metric_name == "continuation":
-        summary["F0 Std"] = np.sqrt(-summary["F0 sum"] ** 2 + summary["F0 sum_sq"])
-        summary["Dur Std"] = np.sqrt(-summary["Dur sum"] ** 2 + summary["Dur sum_sq"])
-        del summary["F0 sum"]
-        del summary["F0 sum_sq"]
-        del summary["Dur sum"]
-        del summary["Dur sum_sq"]
-
-    summary["metric"] = metric_name
-
-    if rank == 0:
-        print(summary)
-        if raw_args.wandb:
-            wandb_results(summary, raw_args)
-        print("# finished in ", time.time() - start, "seconds")
+    # if metric_name not in [
+    #     "correlation",
+    # ]:
+    #     values, normalizers = results
+    #     values = maybe_aggregate_normalize(values, normalizers, world_size)
+    # elif metric_name == "correlation":
+    #     values = maybe_aggregate_correlations(results, world_size)
+    # else:
+    #     assert False
+    #
+    # assert values is not None
+    # summary = dict(zip(name2keys[raw_args.metric], values.tolist()))
+    # if metric_name == "continuation":
+    #     summary["F0 Std"] = np.sqrt(-summary["F0 sum"] ** 2 + summary["F0 sum_sq"])
+    #     summary["Dur Std"] = np.sqrt(-summary["Dur sum"] ** 2 + summary["Dur sum_sq"])
+    #     del summary["F0 sum"]
+    #     del summary["F0 sum_sq"]
+    #     del summary["Dur sum"]
+    #     del summary["Dur sum_sq"]
+    #
+    # summary["metric"] = metric_name
+    #
+    # if rank == 0:
+    #     print(f'Summary: {summary}')
+    #     if raw_args.wandb:
+    #         wandb_results(summary, raw_args)
+    #     print("# finished in ", time.time() - start, "seconds")
 
 
 def wandb_results(summary, raw_args):
