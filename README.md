@@ -1,3 +1,44 @@
+
+# TO RUN
+1. Clone repo
+2. Make virtual environment
+3. Run `pip install -e .`
+4. Run `pip install tqdm, nltk, librosa, AMFM-decompy`
+5. Download missing files (links in README.md)
+> `discrete_prosody_shift_1_1.pt` 
+
+> `hubert_base_ls960.pt` 
+6. Recursively change file paths to own paths (preprocessing scripts store full paths, not relative ones):
+> `sed -i 's/foo/bar/g'`
+> (Replace all instances of "foo" with "bar",
+
+> where "foo" = `/Users/carinakauf/repos/fairseq/input_audiofiles`)
+
+7. Run
+``` bash
+SET=test
+CHECKPOINT_PATH=discrete_prosody_shift_1_1.pt
+DATA=data_config.json
+
+python examples/textless_nlp/pgslm/eval/cont_metrics.py $DATA \
+  --metric=teacher_force_everything \
+  --path=$CHECKPOINT_PATH \
+  --batch-size=16 \
+  --fp16 \
+  --seed=111 \
+  --eval-subset=$SET \
+  --f0-discretization-bounds=mean_norm_log_f0_seg_bin.th --dequantize-prosody
+ ```
+  
+> NOTE: Run without `fp16` flag when running without cuda (https://github.com/pytorch/fairseq/blob/main/examples/textless_nlp/pgslm/eval/cont_metrics.py#L513)
+
+<br />
+<br />
+<br />
+<br />
+<br />
+
+
 <p align="center">
   <img src="docs/fairseq_logo.png" width="150">
   <br />
